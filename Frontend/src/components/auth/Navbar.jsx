@@ -1,8 +1,9 @@
-import { NavLink, Link } from 'react-router-dom'
+import { NavLink, Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { Menu, X } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 
-const NAV_LINKS = [
+const GUEST_LINKS = [
   { to: '/login', label: 'Sign in' },
   { to: '/register', label: 'Register' },
 ]
@@ -16,6 +17,16 @@ const linkClass = ({ isActive }) =>
 
 const Navbar = () => {
   const [open, setOpen] = useState(false)
+  const { isAuthenticated, logout } = useAuth()
+  const navigate = useNavigate()
+
+  const handleLogout = async () => {
+    setOpen(false)
+    await logout()
+    navigate('/login')
+  }
+
+  const navLinks = isAuthenticated ? [] : GUEST_LINKS
 
   return (
     <header className="sticky top-0 z-30 border-b border-white/5 bg-ink-950/70 backdrop-blur">
@@ -32,11 +43,20 @@ const Navbar = () => {
         </Link>
 
         <nav className="hidden items-center gap-1 sm:flex">
-          {NAV_LINKS.map((l) => (
+          {navLinks.map((l) => (
             <NavLink key={l.to} to={l.to} className={linkClass} end>
               {l.label}
             </NavLink>
           ))}
+          {isAuthenticated && (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="px-3 py-1.5 text-sm rounded-md transition-colors text-slate-400 hover:text-white hover:bg-white/5"
+            >
+              Sign out
+            </button>
+          )}
         </nav>
 
         <button
@@ -51,7 +71,7 @@ const Navbar = () => {
 
       {open && (
         <nav className="border-t border-white/5 px-4 py-2 sm:hidden">
-          {NAV_LINKS.map((l) => (
+          {navLinks.map((l) => (
             <NavLink
               key={l.to}
               to={l.to}
@@ -68,6 +88,15 @@ const Navbar = () => {
               {l.label}
             </NavLink>
           ))}
+          {isAuthenticated && (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="block w-full rounded-md px-3 py-2 text-left text-sm transition-colors text-slate-400 hover:text-white hover:bg-white/5"
+            >
+              Sign out
+            </button>
+          )}
         </nav>
       )}
     </header>

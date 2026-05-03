@@ -7,14 +7,17 @@ const extractErrorMessage = (body, status) => {
 }
 
 export const apiFetch = async (path, options = {}) => {
-  const { body, method = 'GET', headers = {}, credentials = 'include', ...rest } = options
+  const { body, method = 'GET', headers = {}, credentials = 'include', token, ...rest } = options
 
   const isPlainObject = body !== null && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof URLSearchParams)
+
+  const resolvedHeaders = isPlainObject ? { 'Content-Type': 'application/json', ...headers } : { ...headers }
+  if (token) resolvedHeaders['Authorization'] = `Bearer ${token}`
 
   const fetchOptions = {
     method,
     credentials,
-    headers: isPlainObject ? { 'Content-Type': 'application/json', ...headers } : headers,
+    headers: resolvedHeaders,
     body: isPlainObject ? JSON.stringify(body) : body,
     ...rest,
   }
@@ -36,4 +39,9 @@ export const apiFetch = async (path, options = {}) => {
   const err = new Error(extractErrorMessage(errorBody, res.status))
   err.status = res.status
   throw err
+}
+
+export const apiFormPost = (path, fields, options = {}) => {
+  const params = new URLSearchParams(fields)
+  return apiFetch(path, { method: 'POST', body: params, ...options })
 }

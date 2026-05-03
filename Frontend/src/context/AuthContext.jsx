@@ -5,16 +5,24 @@ const AuthContext = createContext(null)
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
-  const [token, setToken] = useState(null)
+  const [token, setToken] = useState(() => localStorage.getItem('aurora.token'))
   const [bootstrapping, setBootstrapping] = useState(true)
 
   useEffect(() => {
-    const session = mockAuth.getSession()
-    if (session) {
-      setUser(session.user)
-      setToken(session.token)
-    }
-    setBootstrapping(false)
+    let cancelled = false
+    ;(async () => {
+      const session = await mockAuth.getSession()
+      if (cancelled) return
+      if (session) {
+        setUser(session.user)
+        setToken(session.token)
+      } else {
+        setUser(null)
+        setToken(null)
+      }
+      setBootstrapping(false)
+    })()
+    return () => { cancelled = true }
   }, [])
 
   const login = async (credentials) => {
@@ -41,7 +49,7 @@ export const AuthProvider = ({ children }) => {
     () => ({
       user,
       token,
-      isAuthenticated: Boolean(user),
+      isAuthenticated: Boolean(token),
       bootstrapping,
       login,
       register,
