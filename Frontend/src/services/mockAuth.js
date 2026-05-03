@@ -1,8 +1,8 @@
-// Auth service — register calls the real backend; login/logout/reset remain mocked.
-import { apiFetch } from './api'
+// Auth service — register, login, logout, and session all call the real backend.
+import { apiFetch, apiFormPost } from './api'
 
 const USERS_KEY = 'aurora.users'
-const SESSION_KEY = 'aurora.session'
+const TOKEN_KEY = 'aurora.token'
 const LATENCY = 850
 
 const wait = (ms = LATENCY) => new Promise((r) => setTimeout(r, ms))
@@ -18,19 +18,6 @@ const readUsers = () => {
 const writeUsers = (users) =>
   localStorage.setItem(USERS_KEY, JSON.stringify(users))
 
-const fakeJwt = (userId) => {
-  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-  const payload = btoa(
-    JSON.stringify({
-      sub: userId,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 60 * 15,
-    }),
-  )
-  const signature = btoa(`mock-${userId}-${Date.now()}`).replace(/=+$/, '')
-  return `${header}.${payload}.${signature}`
-}
-
 export const register = async ({ name, email, password }) => {
   const user = await apiFetch('/account/register', {
     method: 'POST',
@@ -40,24 +27,18 @@ export const register = async ({ name, email, password }) => {
 }
 
 export const login = async ({ email, password }) => {
-  await wait()
-  const users = readUsers()
-  const user = users.find(
-    (u) => u.email.toLowerCase() === email.toLowerCase(),
-  )
-  if (!user || user.password !== password) {
-    throw new Error('Invalid email or password.')
-  }
-  const token = fakeJwt(user.id)
-  const session = { user: stripPwd(user), token }
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
-  return session
+  const { access_token } = await apiFormPost('/account/login', { username: email, password })
+  localStorage.setItem(TOKEN_KEY, access_token)
+  const user = await apiFetch('/account/me', { token: access_token })
+  return { user, token: access_token }
 }
 
 export const logout = async () => {
-  await wait(300)
-  localStorage.removeItem(SESSION_KEY)
-  return true
+  try {
+    await apiFetch('/account/logout', { method: 'POST' })
+  } finally {
+    localStorage.removeItem(TOKEN_KEY)
+  }
 }
 
 export const resetPassword = async ({ email }) => {
@@ -71,13 +52,14 @@ export const resetPassword = async ({ email }) => {
   return { sent: true, exists }
 }
 
-export const getSession = () => {
+export const getSession = async () => {
+  const token = localStorage.getItem(TOKEN_KEY)
+  if (!token) return null
   try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    return raw ? JSON.parse(raw) : null
+    const user = await apiFetch('/account/me', { token })
+    return { user, token }
   } catch {
+    localStorage.removeItem(TOKEN_KEY)
     return null
   }
 }
-
-const stripPwd = ({ password, ...rest }) => rest
