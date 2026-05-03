@@ -5,6 +5,13 @@ import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
+import { useAuth } from './context/AuthContext'
+
+const GuestRoute = ({ children }) => {
+  const { isAuthenticated, bootstrapping } = useAuth()
+  if (bootstrapping) return null
+  return isAuthenticated ? <Navigate to="/" replace /> : children
+}
 
 const App = () => (
   <>
@@ -13,9 +20,9 @@ const App = () => (
       <Navbar />
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
+        <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
+        <Route path="/forgot-password" element={<GuestRoute><ForgotPassword /></GuestRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

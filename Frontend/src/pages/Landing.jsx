@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ShieldCheck, RefreshCw, KeyRound } from 'lucide-react'
 import Button from '../components/ui/Button'
+import { useAuth } from '../context/AuthContext'
 
 const features = [
   {
@@ -20,7 +21,9 @@ const features = [
   },
 ]
 
-const Landing = () => (
+const Landing = () => {
+  const { isAuthenticated } = useAuth()
+  return (
   <main className="flex flex-1 flex-col items-center justify-center px-4 py-20 text-center">
     <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1 text-xs text-violet-300">
       <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
@@ -37,14 +40,16 @@ const Landing = () => (
       and password reset — built with FastAPI and React.
     </p>
 
-    <div className="mt-8 flex w-full max-w-xs flex-col gap-3 sm:max-w-none sm:flex-row sm:justify-center">
-      <Link to="/register" className="sm:w-44">
-        <Button>Get started</Button>
-      </Link>
-      <Link to="/login" className="sm:w-44">
-        <Button variant="ghost">Sign in</Button>
-      </Link>
-    </div>
+    {!isAuthenticated && (
+      <div className="mt-8 flex w-full max-w-xs flex-col gap-3 sm:max-w-none sm:flex-row sm:justify-center">
+        <Link to="/register" className="sm:w-44">
+          <Button>Get started</Button>
+        </Link>
+        <Link to="/login" className="sm:w-44">
+          <Button variant="ghost">Sign in</Button>
+        </Link>
+      </div>
+    )}
 
     <div className="mt-20 grid w-full max-w-3xl gap-4 sm:grid-cols-3">
       {features.map(({ icon: Icon, title, desc }) => (
@@ -61,6 +66,7 @@ const Landing = () => (
       ))}
     </div>
   </main>
-)
+  )
+}
 
 export default Landing
