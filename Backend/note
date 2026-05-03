@@ -1,0 +1,3 @@
+uv add "fastapi[standard]" "sqlalchemy[asyncio]" aiosqlite
+
+uv add python-jose[cryptography] passlib[argon2]
