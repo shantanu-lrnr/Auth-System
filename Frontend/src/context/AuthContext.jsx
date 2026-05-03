@@ -25,10 +25,8 @@ export const AuthProvider = ({ children }) => {
   }
 
   const register = async (payload) => {
-    const session = await mockAuth.register(payload)
-    setUser(session.user)
-    setToken(session.token)
-    return session
+    const { user } = await mockAuth.register(payload)
+    return { user }
   }
 
   const logout = async () => {

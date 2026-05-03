@@ -1,5 +1,5 @@
-// Mock auth service — simulates a real backend with localStorage.
-// All functions return promises with realistic latency, throw `Error` on failure.
+// Auth service — register calls the real backend; login/logout/reset remain mocked.
+import { apiFetch } from './api'
 
 const USERS_KEY = 'aurora.users'
 const SESSION_KEY = 'aurora.session'
@@ -32,25 +32,11 @@ const fakeJwt = (userId) => {
 }
 
 export const register = async ({ name, email, password }) => {
-  await wait()
-  const users = readUsers()
-  if (users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
-    throw new Error('An account with this email already exists.')
-  }
-  const user = {
-    id: crypto.randomUUID(),
-    name,
-    email,
-    // NOTE: this is a mock — never store plaintext passwords for real
-    password,
-    createdAt: new Date().toISOString(),
-  }
-  users.push(user)
-  writeUsers(users)
-  const token = fakeJwt(user.id)
-  const session = { user: stripPwd(user), token }
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
-  return session
+  const user = await apiFetch('/account/register', {
+    method: 'POST',
+    body: { name, email, password },
+  })
+  return { user }
 }
 
 export const login = async ({ email, password }) => {
