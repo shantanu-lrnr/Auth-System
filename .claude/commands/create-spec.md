@@ -88,12 +88,11 @@ List every backend file that will be modified, with a one-line reason.
 List every new backend file that will be created.
 
 ## Database changes
-Any new models, columns, or constraints in `models.py`.
-Note: there is no migration tool — deleting `sqlite.db` is the dev workflow.
+Any new models, columns, or constraints.
 If none: state "No database changes".
 
 ## Frontend routes
-Every new or modified React Router route in `App.jsx`:
+Every new or modified React Router route:
 - `<Route path="/path">` — maps to which page component
 
 If no new routes: state "No new frontend routes".
@@ -110,12 +109,12 @@ If none: state "No new dependencies".
 
 ## Rules for implementation
 Specific constraints for this feature. Always include:
-- Async everywhere: `async def` routes/services, `AsyncSession`, `await session.commit()`
-- Use `SessionDep` annotated dependency for DB access — not raw `Depends(get_session)`
-- Business logic in `services.py`; routes in `routers.py` must stay thin
+- Async everywhere
+- Use annotated dependency for DB access 
+- Password hashed
 - Raise `HTTPException(status_code=..., detail="...")` for all client errors
 - Frontend: function components + hooks only; Tailwind for styling; no CSS files
-- Frontend: surface errors/success via `useToast()`; access auth state via `useAuth()`
+- Frontend: surface errors/success 
 - Do not implement other stub routes unless this task explicitly targets them
 
 ## Expected behaviour

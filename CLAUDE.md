@@ -176,7 +176,6 @@ npm run lint
 - **Query-parameter passwords**: `/change-password`, `/forget-password`, `/reset-password` accept `new_password` / `email` / `token` as **query params**, not request bodies. Almost certainly a bug, but match the existing shape unless explicitly asked to migrate to a Pydantic body.
 - **Refresh-token cookie has `secure=True`** → it will not be sent over plain HTTP. The Vite dev frontend on `http://localhost` will not receive it without HTTPS or flipping `secure=False` for dev.
 - **Never install new packages** mid-feature without flagging it
-- **Email "delivery" is `print()`** — verification and reset links only appear in the server console. Don't claim flows are end-to-end working without flagging this.
 
 ## 8. Additional Notes
 
