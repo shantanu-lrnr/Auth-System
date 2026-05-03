@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 1. Project Overview
 
-A full-stack authentication system with a FastAPI backend (JWT auth, refresh-token rotation, email verification) and a React frontend (login, register, password reset). Built as a learning project — backend is fully functional, frontend currently runs against a mock service and is not yet connected to the real API.
+A full-stack authentication system with a FastAPI backend (JWT auth, refresh-token rotation, email verification) and a React frontend (login, register, password reset). Built as a learning project.
 
 ## 2. Architecture
 
@@ -42,7 +42,6 @@ main.jsx                       Mounts <BrowserRouter><ToastProvider><AuthProvide
 App.jsx                        Public routes only: /login, /register, /reset-password
 context/AuthContext.jsx        useAuth(): { user, token, isAuthenticated, login, register, logout, ... }
 context/ToastContext.jsx       useToast(): success/error notifications
-services/mockAuth.js           Fake backend (localStorage, ~850ms latency). REPLACE when wiring real API.
 services/validators.js         Form validation
 components/auth/               Page shells: AuthLayout, Navbar, AuroraBackground
 components/ui/                 Primitives: Button, Card, Input
@@ -51,10 +50,8 @@ pages/                         Login, Register, ResetPassword
 
 **Where things belong:**
 - New route → add a `<Route>` in `App.jsx` and a page in `pages/`.
-- API call → currently goes through `services/mockAuth.js` via `AuthContext`. When real, swap the service layer — keep the `AuthContext` interface intact so pages don't change.
+- API call → goes through the service layer via `AuthContext`. Keep the `AuthContext` interface intact so pages don't change.
 - Reusable input/button → `components/ui/`. Auth-page-specific layout → `components/auth/`.
-
-There is **no protected-route component** and no authenticated landing page — `/login` is the fallback for everything, including post-login navigation.
 
 ## 3. Code Style
 
@@ -71,7 +68,7 @@ There is **no protected-route component** and no authenticated landing page — 
 - Single quotes, no semicolons (matches existing files), 2-space indent.
 - Tailwind utility classes for styling — do not add CSS files or CSS-in-JS.
 - Form pattern: local `useState` for `form` / `errors` / `submitting`; validate via `services/validators.js`; surface results via `useToast()`.
-- Access auth state through `useAuth()` — don't import `mockAuth` directly from pages.
+- Access auth state through `useAuth()`.
 
 ## 4. Preferred Libraries / Tech Constraints
 
@@ -111,15 +108,19 @@ There is **no protected-route component** and no authenticated landing page — 
 - Email sending — `email_verification_link_send` and `password_reset_link_send` only `print()`. No SMTP / mailer.
 - `/admin` — has no real admin functionality, just demonstrates the gate.
 
-**Frontend — implemented:**
-- UI for `/login`, `/register`, `/reset-password` against the **mock** service.
-- `AuthProvider` + `useAuth()` (mounted in `main.jsx`).
+**Frontend — pages (`React Router`, `pages/` + `App.jsx`):**
+| Route | Status |
+|---|---|
+| `/` | Implemented — renders `Landing.jsx` |
+| `/login` | Implemented — renders `Login.jsx` |
+| `/register` | Implemented — renders `Register.jsx` |
+| `/forgot-password` | Implemented — email input form, triggers password reset link (`ForgotPassword.jsx`) |
+| `/reset-password` | Stub — new password form, consumes reset token from URL |
+| `/verify-email` | Stub — email verification page (consumes token from URL) |
+| `/change-password` | Stub — authenticated change-password form |
+| `/profile` | Stub — authenticated profile / account page |
 
-**Frontend — stub / missing:**
-- Real API client — none. `services/mockAuth.js` is the only "backend".
-- Protected routes / authenticated profile page — none.
-- Email verification UI, change-password UI, refresh-token handling — none.
-- "Remember me" checkbox in `Login.jsx` is decorative; not wired.
+**Do not implement a stub route unless the active task explicitly targets that feature.**
 
 ## 6. Commands
 
@@ -176,9 +177,7 @@ npm run lint
 - **Refresh-token cookie has `secure=True`** → it will not be sent over plain HTTP. The Vite dev frontend on `http://localhost` will not receive it without HTTPS or flipping `secure=False` for dev.
 - **Never install new packages** mid-feature without flagging it
 - **Email "delivery" is `print()`** — verification and reset links only appear in the server console. Don't claim flows are end-to-end working without flagging this.
-- **Frontend talks to mock, not real API.** Any "auth works" claim from the frontend means localStorage worked, not that the backend was hit.
 
 ## 8. Additional Notes
 
 - **CWD matters**: `uv run` and `npm` commands assume you're in `Backend/` or `Frontend/` respectively. The repo root has no top-level package manifest.
-- **When wiring frontend → backend**, the integration points are: replace `services/mockAuth.js` with a real `fetch`-based client, send `credentials: 'include'` so the refresh cookie round-trips, add CORS on the backend, and decide where access tokens live (memory in `AuthContext` is fine; localStorage is not, given the cookie strategy).
