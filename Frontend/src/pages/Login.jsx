@@ -30,7 +30,7 @@ const Login = () => {
     try {
       const { user } = await login(form)
       toast.success(`Welcome back, ${user.name?.split(' ')[0] || 'friend'}.`)
-      navigate('/', { replace: true })
+      navigate('/profile', { replace: true })
     } catch (err) {
       toast.error(err.message || 'Something went wrong.')
     } finally {

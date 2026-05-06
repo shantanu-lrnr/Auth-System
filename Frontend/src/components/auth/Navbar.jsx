@@ -49,13 +49,18 @@ const Navbar = () => {
             </NavLink>
           ))}
           {isAuthenticated && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="px-3 py-1.5 text-sm rounded-md transition-colors text-slate-400 hover:text-white hover:bg-white/5"
-            >
-              Sign out
-            </button>
+            <>
+              <NavLink to="/profile" className={linkClass} end>
+                Profile
+              </NavLink>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="px-3 py-1.5 text-sm rounded-md transition-colors text-slate-400 hover:text-white hover:bg-white/5"
+              >
+                Sign out
+              </button>
+            </>
           )}
         </nav>
 
@@ -89,13 +94,29 @@ const Navbar = () => {
             </NavLink>
           ))}
           {isAuthenticated && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="block w-full rounded-md px-3 py-2 text-left text-sm transition-colors text-slate-400 hover:text-white hover:bg-white/5"
-            >
-              Sign out
-            </button>
+            <>
+              <NavLink
+                to="/profile"
+                end
+                onClick={() => setOpen(false)}
+                className={({ isActive }) =>
+                  `block rounded-md px-3 py-2 text-sm transition-colors ${
+                    isActive
+                      ? 'text-white bg-white/5'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`
+                }
+              >
+                Profile
+              </NavLink>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="block w-full rounded-md px-3 py-2 text-left text-sm transition-colors text-slate-400 hover:text-white hover:bg-white/5"
+              >
+                Sign out
+              </button>
+            </>
           )}
         </nav>
       )}
