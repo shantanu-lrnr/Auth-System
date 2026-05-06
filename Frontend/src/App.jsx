@@ -5,12 +5,19 @@ import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
+import Profile from './pages/Profile'
 import { useAuth } from './context/AuthContext'
 
 const GuestRoute = ({ children }) => {
   const { isAuthenticated, bootstrapping } = useAuth()
   if (bootstrapping) return null
-  return isAuthenticated ? <Navigate to="/" replace /> : children
+  return isAuthenticated ? <Navigate to="/profile" replace /> : children
+}
+
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, bootstrapping } = useAuth()
+  if (bootstrapping) return null
+  return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
 const App = () => (
@@ -23,6 +30,7 @@ const App = () => (
         <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
         <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
         <Route path="/forgot-password" element={<GuestRoute><ForgotPassword /></GuestRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

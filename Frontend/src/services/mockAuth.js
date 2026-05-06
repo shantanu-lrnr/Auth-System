@@ -63,3 +63,12 @@ export const getSession = async () => {
     return null
   }
 }
+
+export const updateName = async ({ name, token }) =>
+  apiFetch('/account/me', { method: 'PATCH', body: { name }, token })
+
+export const changePassword = async ({ newPassword, token }) =>
+  apiFetch(
+    `/account/change-password?new_password=${encodeURIComponent(newPassword)}`,
+    { method: 'POST', token },
+  )
