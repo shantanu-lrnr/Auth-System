@@ -54,6 +54,18 @@ export const AuthProvider = ({ children }) => {
   const changePassword = async ({ newPassword }) =>
     mockAuth.changePassword({ newPassword, token })
 
+  const requestVerification = async () =>
+    mockAuth.requestVerification({ token })
+
+  const verifyEmail = async (verifyToken) => {
+    const result = await mockAuth.verifyEmail({ token: verifyToken })
+    if (token) {
+      const session = await mockAuth.getSession()
+      if (session) setUser(session.user)
+    }
+    return result
+  }
+
   const value = useMemo(
     () => ({
       user,
@@ -66,6 +78,8 @@ export const AuthProvider = ({ children }) => {
       resetPassword,
       updateName,
       changePassword,
+      requestVerification,
+      verifyEmail,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, token, bootstrapping],
