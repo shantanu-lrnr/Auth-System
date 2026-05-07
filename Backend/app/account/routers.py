@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, Request
 from pydantic import EmailStr
 from app.account.services import (
     create_user,
@@ -7,11 +7,10 @@ from app.account.services import (
     verify_email_token,
     change_password,
     password_reset_link_send,
-    reset_password_with_token,
-    update_user_name
+    reset_password_with_token
 )
 from app.account.models import User
-from app.account.schemas import UserCreate, UserOut, UserUpdate
+from app.account.schemas import UserCreate, UserOut
 from fastapi import status,Depends,HTTPException
 from app.db.config import SessionDep
 from fastapi.security import OAuth2PasswordRequestForm
@@ -89,13 +88,9 @@ async def refresh_token(session:SessionDep,request:Request):
 async def me(user:Annotated[User,Depends(get_current_user)]):
     return user
 
-@router.patch("/me",response_model=UserOut)
-async def update_me(session:SessionDep, payload:UserUpdate, user:Annotated[User,Depends(get_current_user)]):
-    return await update_user_name(session, user, payload.name)
-
 @router.post("/verify-request")
-async def send_verification_email(background:BackgroundTasks, user:Annotated[User,Depends(get_current_user)]):
-    return email_verification_link_send(background, user)
+async def send_verification_email(user:Annotated[User,Depends(get_current_user)]):
+    return email_verification_link_send(user)
 
 @router.get("/verify")
 async def verify_email(session:SessionDep,token:str):
@@ -107,8 +102,8 @@ async def password_change(session:SessionDep, new_password:str, user:Annotated[U
     return await change_password(session, user, new_password)
     
 @router.post("/forget-password")
-async def forget_password(session:SessionDep, background:BackgroundTasks, email:EmailStr):
-    return await password_reset_link_send(session, background, email)
+async def forget_password(session:SessionDep,email:EmailStr):
+    return await password_reset_link_send(session,email)
 
 @router.post("/reset-password")
 async def reset_password(session:SessionDep,token:str,new_password:str):
