@@ -7,10 +7,11 @@ from app.account.services import (
     verify_email_token,
     change_password,
     password_reset_link_send,
-    reset_password_with_token
+    reset_password_with_token,
+    update_user_name
 )
 from app.account.models import User
-from app.account.schemas import UserCreate, UserOut
+from app.account.schemas import UserCreate, UserOut, UserUpdate
 from fastapi import status,Depends,HTTPException
 from app.db.config import SessionDep
 from fastapi.security import OAuth2PasswordRequestForm
@@ -87,6 +88,10 @@ async def refresh_token(session:SessionDep,request:Request):
 @router.get("/me",response_model=UserOut)
 async def me(user:Annotated[User,Depends(get_current_user)]):
     return user
+
+@router.patch("/me",response_model=UserOut)
+async def update_me(session:SessionDep, payload:UserUpdate, user:Annotated[User,Depends(get_current_user)]):
+    return await update_user_name(session, user, payload.name)
 
 @router.post("/verify-request")
 async def send_verification_email(user:Annotated[User,Depends(get_current_user)]):

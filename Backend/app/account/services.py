@@ -79,4 +79,14 @@ async def reset_password_with_token(session:AsyncSession,token:str,new_password:
     if not user:
         raise HTTPException(status_code=404,detail="User not found")
     return await change_password(session, user, new_password)
+
+async def update_user_name(session:AsyncSession,user:User,name:str) -> User:
+    cleaned = name.strip() if name else ""
+    if not cleaned:
+        raise HTTPException(status_code=400,detail="Name cannot be empty")
+    user.name = cleaned
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
        
