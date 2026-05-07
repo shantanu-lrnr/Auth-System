@@ -3,9 +3,11 @@ name = "ch107-auth"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "aiosmtplib>=5.1.0",
     "aiosqlite>=0.22.1",
     "fastapi[standard]>=0.136.1",
     "passlib[argon2]>=1.7.4",
+    "python-dotenv>=1.2.2",
     "python-jose[cryptography]>=3.5.0",
     "sqlalchemy[asyncio]>=2.0.49",
 ]

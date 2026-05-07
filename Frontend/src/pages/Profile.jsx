@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BadgeCheck, Lock, Pencil, ShieldAlert } from 'lucide-react'
+import { BadgeCheck, Lock, Mail, Pencil, ShieldAlert } from 'lucide-react'
 import Card from '../components/ui/Card'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
@@ -293,8 +293,49 @@ const PasswordCard = ({ onChangePassword, onSuccess, onError }) => {
   )
 }
 
+const VerifyEmailBanner = ({ email, onResend }) => {
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const toast = useToast()
+
+  const send = async () => {
+    setSending(true)
+    try {
+      await onResend()
+      setSent(true)
+      toast.success(`Verification email sent to ${email}`)
+    } catch (err) {
+      toast.error(err.message || 'Could not send verification email.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-300">
+          <Mail className="h-4 w-4" />
+        </span>
+        <p className="text-sm font-medium text-amber-100">
+          Verify your email
+        </p>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={send}
+        loading={sending}
+        className="!w-auto shrink-0 !px-3 !py-1.5 !text-xs"
+      >
+        {sent ? 'Resend email' : 'Send verification email'}
+      </Button>
+    </div>
+  )
+}
+
 const Profile = () => {
-  const { user, updateName, changePassword } = useAuth()
+  const { user, updateName, changePassword, requestVerification } = useAuth()
   const toast = useToast()
 
   if (!user) return null
@@ -310,6 +351,12 @@ const Profile = () => {
           Manage your profile and security.
         </p>
       </header>
+      {!user.is_verified && (
+        <VerifyEmailBanner
+          email={user.email}
+          onResend={requestVerification}
+        />
+      )}
       <div className="space-y-6">
         <AccountCard
           user={user}

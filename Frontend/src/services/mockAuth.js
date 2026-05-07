@@ -1,22 +1,7 @@
 // Auth service — register, login, logout, and session all call the real backend.
 import { apiFetch, apiFormPost } from './api'
 
-const USERS_KEY = 'aurora.users'
 const TOKEN_KEY = 'aurora.token'
-const LATENCY = 850
-
-const wait = (ms = LATENCY) => new Promise((r) => setTimeout(r, ms))
-
-const readUsers = () => {
-  try {
-    return JSON.parse(localStorage.getItem(USERS_KEY) || '[]')
-  } catch {
-    return []
-  }
-}
-
-const writeUsers = (users) =>
-  localStorage.setItem(USERS_KEY, JSON.stringify(users))
 
 export const register = async ({ name, email, password }) => {
   const user = await apiFetch('/account/register', {
@@ -42,15 +27,24 @@ export const logout = async () => {
 }
 
 export const resetPassword = async ({ email }) => {
-  await wait()
-  const users = readUsers()
-  const exists = users.some(
-    (u) => u.email.toLowerCase() === email.toLowerCase(),
+  await apiFetch(
+    `/account/forget-password?email=${encodeURIComponent(email)}`,
+    { method: 'POST' },
   )
-  // We intentionally don't reveal whether the email exists — return success
-  // either way (the standard practice for password reset endpoints).
-  return { sent: true, exists }
+  return { sent: true }
 }
+
+export const confirmPasswordReset = async ({ token, newPassword }) =>
+  apiFetch(
+    `/account/reset-password?token=${encodeURIComponent(token)}&new_password=${encodeURIComponent(newPassword)}`,
+    { method: 'POST' },
+  )
+
+export const requestVerification = async ({ token }) =>
+  apiFetch('/account/verify-request', { method: 'POST', token })
+
+export const verifyEmail = async ({ token }) =>
+  apiFetch(`/account/verify?token=${encodeURIComponent(token)}`, { method: 'GET' })
 
 export const getSession = async () => {
   const token = localStorage.getItem(TOKEN_KEY)

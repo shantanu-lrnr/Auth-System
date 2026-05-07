@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, BackgroundTasks, Request
 from pydantic import EmailStr
 from app.account.services import (
     create_user,
@@ -89,8 +89,8 @@ async def me(user:Annotated[User,Depends(get_current_user)]):
     return user
 
 @router.post("/verify-request")
-async def send_verification_email(user:Annotated[User,Depends(get_current_user)]):
-    return email_verification_link_send(user)
+async def send_verification_email(background:BackgroundTasks, user:Annotated[User,Depends(get_current_user)]):
+    return email_verification_link_send(background, user)
 
 @router.get("/verify")
 async def verify_email(session:SessionDep,token:str):
@@ -102,8 +102,8 @@ async def password_change(session:SessionDep, new_password:str, user:Annotated[U
     return await change_password(session, user, new_password)
     
 @router.post("/forget-password")
-async def forget_password(session:SessionDep,email:EmailStr):
-    return await password_reset_link_send(session,email)
+async def forget_password(session:SessionDep, background:BackgroundTasks, email:EmailStr):
+    return await password_reset_link_send(session, background, email)
 
 @router.post("/reset-password")
 async def reset_password(session:SessionDep,token:str,new_password:str):
