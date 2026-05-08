@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import * as mockAuth from '../services/mockAuth'
+import { useToast } from './ToastContext'
 
 const AuthContext = createContext(null)
 
@@ -7,6 +8,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(() => localStorage.getItem('aurora.token'))
   const [bootstrapping, setBootstrapping] = useState(true)
+  const [revalidating, setRevalidating] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     let cancelled = false
@@ -24,6 +27,21 @@ export const AuthProvider = ({ children }) => {
     })()
     return () => { cancelled = true }
   }, [])
+
+  // If apiFetch detects a dead session (401 + refresh failed), it removes the
+  // token and dispatches this event. We mirror that in React state so route
+  // guards bounce the user to /login on the next render, and surface the
+  // server's reason (e.g. "Account is no longer active") as a toast.
+  useEffect(() => {
+    const onExpired = (e) => {
+      setUser(null)
+      setToken(null)
+      const reason = e?.detail?.reason
+      if (reason) toast.error(reason)
+    }
+    window.addEventListener('aurora.session-expired', onExpired)
+    return () => window.removeEventListener('aurora.session-expired', onExpired)
+  }, [toast])
 
   const login = async (credentials) => {
     const session = await mockAuth.login(credentials)
@@ -54,6 +72,29 @@ export const AuthProvider = ({ children }) => {
   const changePassword = async ({ newPassword }) =>
     mockAuth.changePassword({ newPassword, token })
 
+  const requestAccountDeletion = async ({ password }) => {
+    await mockAuth.requestAccountDeletion({ password, token })
+    localStorage.removeItem('aurora.token')
+    setUser(null)
+    setToken(null)
+  }
+
+  // Re-fetch the current user. If the session is dead, apiFetch will fire
+  // 'aurora.session-expired' which our listener already handles.
+  const revalidateSession = async () => {
+    if (!token) return
+    setRevalidating(true)
+    try {
+      const session = await mockAuth.getSession()
+      if (session) setUser(session.user)
+    } catch {
+      // apiFetch already cleared the token + fired the event on a real 401.
+      // For other errors (network etc.) we keep the existing session.
+    } finally {
+      setRevalidating(false)
+    }
+  }
+
   const requestVerification = async () =>
     mockAuth.requestVerification({ token })
 
@@ -80,12 +121,15 @@ export const AuthProvider = ({ children }) => {
       token,
       isAuthenticated: Boolean(token),
       bootstrapping,
+      revalidating,
       login,
       register,
       logout,
       resetPassword,
       updateName,
       changePassword,
+      requestAccountDeletion,
+      revalidateSession,
       requestVerification,
       verifyEmail,
       listUsers,
@@ -97,7 +141,7 @@ export const AuthProvider = ({ children }) => {
       downloadUsersCsv,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, token, bootstrapping],
+    [user, token, bootstrapping, revalidating],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

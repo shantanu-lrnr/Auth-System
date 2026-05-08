@@ -1,7 +1,7 @@
 from app.account.models import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, asc, desc
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.account.schemas import UserCreate, AdminUserCreate
 from app.account.utils import (
     get_user_by_email,
@@ -45,8 +45,20 @@ async def create_user(session:AsyncSession, user:UserCreate) -> User:
 async def authenticate_user(session:AsyncSession, email:str,password:str):
     user = await get_user_by_email(session,email)
     if user and verify_password(password,user.hashed_password):
+        if user.deletion_requested_at is not None:
+            requested_at = user.deletion_requested_at
+            if requested_at.tzinfo is None:
+                requested_at = requested_at.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - requested_at > timedelta(days=30):
+                raise HTTPException(status_code=403, detail="Account is permanently deleted.")
+            user.is_active = True
+            user.deletion_requested_at = None
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            return user
         if not user.is_active:
-            raise HTTPException(status_code=403, detail="Account deactivated. Contact an administrator.")
+            raise HTTPException(status_code=403, detail="Your account has been blocked due to policy violations. Contact an administrator.")
         return user
     return None
 
@@ -91,6 +103,16 @@ async def change_password(session:AsyncSession,user:User,new_password:str):
     session.add(user)
     await session.commit()
     return {"msg":"Password changed successfully"}
+
+async def request_account_deletion(session: AsyncSession, user: User, password: str):
+    if not verify_password(password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    user.is_active = False
+    user.deletion_requested_at = datetime.now(timezone.utc)
+    session.add(user)
+    await session.commit()
+    await revoke_all_user_tokens(session, user.id)
+    return {"msg": "Account scheduled for deletion. You have 30 days to log back in to restore it."}
     
 async def password_reset_link_send(session: AsyncSession, background: BackgroundTasks, email: str):
     user = await get_user_by_email(session, email)
@@ -132,11 +154,9 @@ def _apply_user_filters(stmt, search: str | None, role: str | None, status: str 
     elif role == "user":
         stmt = stmt.where(User.is_admin == False)
     if status == "active":
-        stmt = stmt.where(User.is_active == True, User.deleted_at.is_(None))
+        stmt = stmt.where(User.is_active == True)
     elif status == "inactive":
-        stmt = stmt.where(User.is_active == False, User.deleted_at.is_(None))
-    elif status == "deleted":
-        stmt = stmt.where(User.deleted_at.is_not(None))
+        stmt = stmt.where(User.is_active == False)
     return stmt
 
 
@@ -156,7 +176,7 @@ async def list_users(
         raise HTTPException(status_code=400, detail="Invalid order")
     if role is not None and role not in {"admin", "user"}:
         raise HTTPException(status_code=400, detail="Invalid role filter")
-    if status is not None and status not in {"active", "inactive", "deleted"}:
+    if status is not None and status not in {"active", "inactive"}:
         raise HTTPException(status_code=400, detail="Invalid status filter")
 
     page = max(1, page)
@@ -178,9 +198,7 @@ async def list_users(
 async def user_stats(session: AsyncSession):
     total = await session.scalar(select(func.count()).select_from(User))
     active = await session.scalar(
-        select(func.count()).select_from(User).where(
-            User.is_active == True, User.deleted_at.is_(None)
-        )
+        select(func.count()).select_from(User).where(User.is_active == True)
     )
     admins = await session.scalar(
         select(func.count()).select_from(User).where(User.is_admin == True)
@@ -283,7 +301,7 @@ async def export_users_csv(
     w = csv.writer(buf)
     w.writerow([
         "id", "name", "email", "is_active", "is_verified",
-        "is_admin", "deleted_at", "created_at", "updated_at",
+        "is_admin", "created_at", "updated_at",
     ])
     for u in items:
         w.writerow([
@@ -293,7 +311,6 @@ async def export_users_csv(
             u.is_active,
             u.is_verified,
             u.is_admin,
-            u.deleted_at.isoformat() if u.deleted_at else "",
             u.created_at.isoformat() if u.created_at else "",
             u.updated_at.isoformat() if u.updated_at else "",
         ])

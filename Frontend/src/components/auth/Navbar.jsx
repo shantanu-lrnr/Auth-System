@@ -1,5 +1,5 @@
-import { NavLink, Link, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
@@ -17,8 +17,16 @@ const linkClass = ({ isActive }) =>
 
 const Navbar = () => {
   const [open, setOpen] = useState(false)
-  const { isAuthenticated, user, logout } = useAuth()
+  const { isAuthenticated, user, logout, revalidateSession } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Revalidate on every navigation so a deactivated/deleted user's nav state
+  // (e.g. on the public Landing page) updates without a hard refresh.
+  useEffect(() => {
+    if (isAuthenticated) revalidateSession()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname])
 
   const handleLogout = async () => {
     setOpen(false)

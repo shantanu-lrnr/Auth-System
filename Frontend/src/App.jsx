@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import AuroraBackground from './components/auth/AuroraBackground'
 import Navbar from './components/auth/Navbar'
 import Landing from './pages/Landing'
@@ -18,14 +19,25 @@ const GuestRoute = ({ children }) => {
 }
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, bootstrapping } = useAuth()
-  if (bootstrapping) return null
+  const { isAuthenticated, bootstrapping, revalidating, revalidateSession } = useAuth()
+  const location = useLocation()
+  useEffect(() => {
+    if (isAuthenticated) revalidateSession()
+    // Re-check whenever the user navigates between protected pages.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname])
+  if (bootstrapping || revalidating) return null
   return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
 const AdminRoute = ({ children }) => {
-  const { isAuthenticated, user, bootstrapping } = useAuth()
-  if (bootstrapping) return null
+  const { isAuthenticated, user, bootstrapping, revalidating, revalidateSession } = useAuth()
+  const location = useLocation()
+  useEffect(() => {
+    if (isAuthenticated) revalidateSession()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname])
+  if (bootstrapping || revalidating) return null
   if (!isAuthenticated) return <Navigate to="/login" replace />
   if (!user?.is_admin) return <Navigate to="/profile" replace />
   return children

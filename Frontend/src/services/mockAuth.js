@@ -69,6 +69,13 @@ export const changePassword = async ({ newPassword, token }) =>
     { method: 'POST', token },
   )
 
+export const requestAccountDeletion = async ({ password, token }) =>
+  apiFetch('/account/delete-request', {
+    method: 'POST',
+    body: { password },
+    token,
+  })
+
 export {
   listUsers,
   getUserById,
