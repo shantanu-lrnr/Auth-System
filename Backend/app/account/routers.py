@@ -16,6 +16,7 @@ from app.account.services import (
     user_stats,
     create_user_as_admin,
     export_users_csv,
+    request_account_deletion,
 )
 from app.account.models import User
 from app.account.schemas import (
@@ -26,6 +27,7 @@ from app.account.schemas import (
     AdminActionOut,
     UserStatsOut,
     AdminUserCreate,
+    DeleteAccountRequest,
 )
 from fastapi.responses import Response
 from datetime import datetime, timezone
@@ -121,7 +123,18 @@ async def verify_email(session:SessionDep,token:str):
 @router.post("/change-password")
 async def password_change(session:SessionDep, new_password:str, user:Annotated[User, Depends(get_current_user)]):
     return await change_password(session, user, new_password)
-    
+
+@router.post("/delete-request")
+async def delete_request(
+    session: SessionDep,
+    payload: DeleteAccountRequest,
+    user: Annotated[User, Depends(get_current_user)],
+):
+    result = await request_account_deletion(session, user, payload.password)
+    response = JSONResponse(content=result)
+    response.delete_cookie("refresh_token")
+    return response
+
 @router.post("/forget-password")
 async def forget_password(session:SessionDep, background:BackgroundTasks, email:EmailStr):
     return await password_reset_link_send(session, background, email)

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 1. Project Overview
 
-A full-stack authentication system with a FastAPI backend (JWT auth, refresh-token rotation, email verification) and a React frontend (login, register, password reset). Built as a learning project.
+A full-stack authentication system with a FastAPI backend (JWT auth, refresh-token rotation, real Gmail SMTP for email verification & password reset, soft-delete with 30-day grace, admin user management) and a React frontend (login, register, password reset, profile, admin panel). Built as a learning project.
 
 ## 2. Architecture
 
@@ -14,19 +14,21 @@ A full-stack authentication system with a FastAPI backend (JWT auth, refresh-tok
 main.py              FastAPI app + lifespan (auto-creates SQLite tables on startup)
 db/config.py         Async engine, Base, async_session, SessionDep (Annotated dep)
 account/
-  routers.py         /account/* routes
+  routers.py         /account/* routes + nested /account/admin/users/* sub-router
   services.py        Business logic; raises HTTPException directly
   utils.py           Password hashing (argon2), JWT + refresh-token primitives
+  email.py           Gmail SMTP send_email (aiosmtplib) + render_action_email HTML template
   dependencies.py    get_current_user, required_admin
-  models.py          User, RefreshToken (cascade delete)
+  models.py          User (with deletion_requested_at), RefreshToken (cascade delete)
   schemas.py         Pydantic request/response models
 sqlite.db            Auto-created on first run (NOT under migrations)
 ```
 
 **Where things belong:**
-- New HTTP route → `routers.py` (thin; just calls a service).
+- New HTTP route → `routers.py` (thin; just calls a service). Admin routes go on the nested `admin_router` (`/account/admin/users/...`).
 - New business logic → `services.py`. Raise `HTTPException` for client-facing errors.
 - New token / crypto helper → `utils.py`.
+- New email template / SMTP work → `email.py` (use `render_action_email` for branded buttons; queue via `BackgroundTasks`).
 - New auth/permission gate → `dependencies.py` (compose with `Depends(get_current_user)`).
 - DB model change → `models.py`. Schema is recreated on startup; **there is no migration tool**, so deleting `sqlite.db` is the dev workflow.
 
@@ -35,23 +37,37 @@ sqlite.db            Auto-created on first run (NOT under migrations)
 - **Refresh token**: opaque UUID stored in the `refresh_token` table with `revoked` + `expires_at`. Set as an `httpOnly` cookie by `/login` and `/refresh`. `/refresh` revokes the old row before issuing a new one (rotation).
 - **Email-verify / password-reset tokens**: also JWTs, distinguished by a `type` claim (`"verify"` / `"reset"`) checked in `verify_token_and_get_user_id`.
 
+**Soft-delete model:**
+- `User.deletion_requested_at` is nullable. `POST /account/delete-request` (password-confirmed) sets it + `is_active = False` and revokes all refresh tokens.
+- `authenticate_user` checks `deletion_requested_at` **before** the `is_active` gate: within 30 days → restore (clear flag, reactivate, log in); past 30 days → 403 `"Account is permanently deleted."`. Only after that does the normal `is_active` admin-block check apply. Permanent purge is not yet implemented.
+
 ### Frontend (`Frontend/src/`)
 
 ```
 main.jsx                       Mounts <BrowserRouter><ToastProvider><AuthProvider><App/>>
-App.jsx                        Public routes only: /login, /register, /reset-password
-context/AuthContext.jsx        useAuth(): { user, token, isAuthenticated, login, register, logout, ... }
+App.jsx                        Routes + GuestRoute / ProtectedRoute / AdminRoute guards
+context/AuthContext.jsx        useAuth(): user, token, login, register, logout, updateName,
+                               changePassword, requestAccountDeletion, revalidateSession,
+                               requestVerification, verifyEmail, plus admin helpers
+                               (listUsers, toggleUserActive, ..., downloadUsersCsv)
 context/ToastContext.jsx       useToast(): success/error notifications
+services/api.js                apiFetch with silent refresh on 401 + 'aurora.session-expired' event
+services/mockAuth.js           Thin wrappers over apiFetch (name is legacy — these hit real backend)
 services/validators.js         Form validation
 components/auth/               Page shells: AuthLayout, Navbar, AuroraBackground
 components/ui/                 Primitives: Button, Card, Input
-pages/                         Login, Register, ResetPassword
+pages/                         Landing, Login, Register, ForgotPassword, ResetPassword,
+                               VerifyEmail, Profile, AdminPanel
 ```
 
 **Where things belong:**
-- New route → add a `<Route>` in `App.jsx` and a page in `pages/`.
-- API call → goes through the service layer via `AuthContext`. Keep the `AuthContext` interface intact so pages don't change.
+- New route → add a `<Route>` in `App.jsx` (wrap with the appropriate guard) and a page in `pages/`.
+- API call → add to `services/api.js` or `services/mockAuth.js`, then expose via `AuthContext`. Keep the `AuthContext` interface stable so pages don't need to change.
 - Reusable input/button → `components/ui/`. Auth-page-specific layout → `components/auth/`.
+
+**Session lifecycle:**
+- `apiFetch` retries once on 401 via `/account/refresh`. If that fails, it clears the token and dispatches `aurora.session-expired` with the original 401 detail; `AuthContext` listens and clears React state + toasts the reason.
+- `ProtectedRoute` and `AdminRoute` call `revalidateSession()` on every navigation so deactivation/deletion takes effect without a hard refresh.
 
 ## 3. Code Style
 
@@ -61,6 +77,7 @@ pages/                         Login, Register, ResetPassword
 - Type hints on every function signature (`Mapped[...]` for models, `EmailStr` / Pydantic models for I/O).
 - Raise `HTTPException(status_code=..., detail="...")` for client errors — don't return error dicts.
 - Routers should be thin; put logic in `services.py`.
+- Send email via `BackgroundTasks.add_task(send_email, ...)` so the request doesn't block on SMTP.
 - 4-space indent, double quotes are common but not enforced — match the surrounding file.
 
 **JavaScript / React (Frontend)**
@@ -78,6 +95,7 @@ pages/                         Login, Register, ResetPassword
 - DB driver: `aiosqlite`. SQLite only — **do not** add Postgres/MySQL drivers without discussing.
 - Hashing: `passlib[argon2]` via the existing `pwd_context`. Don't switch to bcrypt.
 - JWT: `python-jose[cryptography]` (`from jose import jwt`).
+- Email: `aiosmtplib` to Gmail SMTP. Required env vars: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, optional `GMAIL_FROM`, `APP_BASE_URL`. Loaded from `.env` at the repo root. The app **will fail to import `email.py`** if these are missing.
 - Python ≥ 3.13. Don't use syntax requiring newer.
 - **No migrations tool installed.** Don't add Alembic without asking.
 
@@ -93,34 +111,42 @@ pages/                         Login, Register, ResetPassword
 | Route | Method | Notes |
 |---|---|---|
 | `/register` | POST | Creates user (rejects duplicate email). |
-| `/login` | POST | OAuth2 password form. Sets `refresh_token` cookie + returns access token. |
+| `/login` | POST | OAuth2 password form. Sets `refresh_token` cookie + returns access token. Restores soft-deleted accounts within 30-day window. |
 | `/refresh` | POST | Reads cookie, rotates refresh token, returns new pair. |
 | `/me` | GET | Returns current user. |
-| `/verify-request` | POST | Generates verify token; **prints link to console** (no real email). |
+| `/me` | PATCH | Update display name (`UserUpdate { name }` body). |
+| `/verify-request` | POST | Authenticated. Sends real verification email via Gmail SMTP. |
 | `/verify` | GET | Consumes verify token, sets `is_verified = True`. |
 | `/change-password` | POST | Authenticated. `new_password` is a **query parameter** (see warnings). |
-| `/forget-password` | POST | Generates reset token; **prints link to console**. |
+| `/delete-request` | POST | Authenticated. Body `{ password }`. Soft-deletes (`is_active=False`, `deletion_requested_at=now`), revokes all refresh tokens, clears cookie. |
+| `/forget-password` | POST | Sends real reset email via Gmail SMTP. |
 | `/reset-password` | POST | Consumes reset token. |
-| `/admin` | GET | Gated by `required_admin`. Returns greeting only. |
 | `/logout` | POST | Revokes refresh token, clears cookie. |
 
-**Backend — stub / placeholder:**
-- Email sending — `email_verification_link_send` and `password_reset_link_send` only `print()`. No SMTP / mailer.
-- `/admin` — has no real admin functionality, just demonstrates the gate.
+**Backend — admin sub-router (`/account/admin/users` prefix, `required_admin` gate):**
+| Route | Method | Notes |
+|---|---|---|
+| `/` | GET | Paginated list with `page`, `page_size`, `search`, `sort_by`, `order`, `role`, `status` filters. |
+| `/` | POST | Admin creates a user (`AdminUserCreate` — can set `is_admin`). |
+| `/stats` | GET | Totals: total / active / admins / new_this_month. |
+| `/export` | GET | CSV download with same filters as list. |
+| `/{user_id}` | GET | Single user by id. |
+| `/{user_id}/toggle-active` | PATCH | Activate/deactivate. Revokes tokens on deactivate. Cannot target self or other admins. |
+| `/{user_id}/toggle-admin` | PATCH | Grant/revoke admin. Cannot target self or other admins. |
 
 **Frontend — pages (`React Router`, `pages/` + `App.jsx`):**
-| Route | Status |
-|---|---|
-| `/` | Implemented — renders `Landing.jsx` |
-| `/login` | Implemented — renders `Login.jsx` |
-| `/register` | Implemented — renders `Register.jsx` |
-| `/forgot-password` | Implemented — email input form, triggers password reset link (`ForgotPassword.jsx`) |
-| `/reset-password` | Stub — new password form, consumes reset token from URL |
-| `/verify-email` | Stub — email verification page (consumes token from URL) |
-| `/change-password` | Stub — authenticated change-password form |
-| `/profile` | Stub — authenticated profile / account page |
+| Route | Guard | Status |
+|---|---|---|
+| `/` | — | Implemented (`Landing.jsx`) |
+| `/login` | Guest | Implemented |
+| `/register` | Guest | Implemented |
+| `/forgot-password` | Guest | Implemented — triggers reset email |
+| `/reset-password` | Guest | Implemented — consumes reset token from URL |
+| `/verify-email` | — | Implemented — consumes verify token from URL |
+| `/profile` | Protected | Implemented — name edit, password change, resend verification, danger-zone delete |
+| `/admin` | Admin | Implemented — `AdminPanel.jsx`, full user management UI |
 
-**Do not implement a stub route unless the active task explicitly targets that feature.**
+**There are no stub frontend pages remaining.** New features mean new routes/pages.
 
 ## 6. Commands
 
@@ -133,7 +159,7 @@ uv venv
 # Install dependencies
 uv sync
 
-# Run FastAPI dev server
+# Run FastAPI dev server (requires GMAIL_USER + GMAIL_APP_PASSWORD in .env at repo root)
 uv run fastapi dev app/main.py
 
 # Run all tests
@@ -173,10 +199,14 @@ npm run lint
 ## 7. Critical Rules / Warnings
 
 - **`SECRET_KEY = "MY-SECRET-KEY"`** is hardcoded in `app/account/utils.py`. Same key signs access, verify, AND reset tokens. Treat as dev-only; do not deploy.
-- **Query-parameter passwords**: `/change-password`, `/forget-password`, `/reset-password` accept `new_password` / `email` / `token` as **query params**, not request bodies. Almost certainly a bug, but match the existing shape unless explicitly asked to migrate to a Pydantic body.
+- **Query-parameter passwords**: `/change-password`, `/forget-password`, `/reset-password` accept `new_password` / `email` / `token` as **query params**, not request bodies. Almost certainly a bug, but match the existing shape unless explicitly asked to migrate to a Pydantic body. (`/delete-request` is the exception — it correctly takes a JSON body.)
 - **Refresh-token cookie has `secure=True`** → it will not be sent over plain HTTP. The Vite dev frontend on `http://localhost` will not receive it without HTTPS or flipping `secure=False` for dev.
-- **Never install new packages** mid-feature without flagging it
+- **Email is real, not stubbed.** `app/account/email.py` raises at import time if `GMAIL_USER` / `GMAIL_APP_PASSWORD` are missing — the backend won't start without them. Use a Gmail app password.
+- **`services/mockAuth.js` is misleadingly named** — despite the "mock" prefix it calls the real backend via `apiFetch`. Don't replace it with another mock layer.
+- **Admin self-protection**: `toggle_user_active` / `toggle_user_admin` both refuse to act on the calling admin or on any other admin. If you're adding new admin actions, mirror this pattern.
+- **`.claude/specs/`** holds the per-feature spec files (one per implemented step). Read the relevant spec when continuing or extending an existing feature.
+- **Never install new packages** mid-feature without flagging it.
 
 ## 8. Additional Notes
 
-- **CWD matters**: `uv run` and `npm` commands assume you're in `Backend/` or `Frontend/` respectively. The repo root has no top-level package manifest.
+- **CWD matters**: `uv run` and `npm` commands assume you're in `Backend/` or `Frontend/` respectively. The repo root has no top-level package manifest, but it does hold the `.env` consumed by `app/account/email.py`.

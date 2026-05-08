@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { BadgeCheck, Lock, Mail, Pencil, ShieldAlert } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { BadgeCheck, Lock, Mail, Pencil, ShieldAlert, Trash2 } from 'lucide-react'
 import Card from '../components/ui/Card'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
@@ -334,8 +335,104 @@ const VerifyEmailBanner = ({ email, onResend }) => {
   )
 }
 
+const DeleteAccountCard = ({ onDelete, onSuccess, onError }) => {
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const navigate = useNavigate()
+
+  const cancel = () => {
+    setOpen(false)
+    setPassword('')
+    setError(null)
+  }
+
+  const onSubmit = async (e) => {
+    e.preventDefault()
+    if (!password) {
+      setError('Password is required.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await onDelete({ password })
+      onSuccess('Account scheduled for deletion. You have 30 days to log back in to restore it.')
+      navigate('/')
+    } catch (err) {
+      onError(err.message || 'Could not delete account.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Card className="border-rose-500/30">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-base font-medium text-rose-200">Danger zone</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Delete your account. You will have 30 days to log back in to restore it.
+          </p>
+        </div>
+        {!open && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setOpen(true)}
+            className="!w-auto shrink-0 border-rose-500/30 !px-3 !py-1.5 !text-xs text-rose-200 hover:bg-rose-500/10"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete account
+          </Button>
+        )}
+      </div>
+
+      {open && (
+        <form
+          onSubmit={onSubmit}
+          aria-live="polite"
+          className="mt-5 space-y-4"
+        >
+          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-100">
+            This will deactivate your account immediately and log you out. If you log back in within 30 days your account will be restored. After 30 days, the account is permanently deleted.
+          </div>
+          <Input
+            label="Confirm your password"
+            type="password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              if (error) setError(null)
+            }}
+            error={error}
+            autoComplete="current-password"
+          />
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={cancel}
+              className="!w-auto !px-3 !py-1.5 !text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              loading={submitting}
+              className="!w-auto !px-3 !py-1.5 !text-xs !bg-rose-500/80 hover:!bg-rose-500"
+            >
+              Delete my account
+            </Button>
+          </div>
+        </form>
+      )}
+    </Card>
+  )
+}
+
 const Profile = () => {
-  const { user, updateName, changePassword, requestVerification } = useAuth()
+  const { user, updateName, changePassword, requestAccountDeletion, requestVerification } = useAuth()
   const toast = useToast()
 
   if (!user) return null
@@ -366,6 +463,11 @@ const Profile = () => {
         />
         <PasswordCard
           onChangePassword={changePassword}
+          onSuccess={onSuccess}
+          onError={onError}
+        />
+        <DeleteAccountCard
+          onDelete={requestAccountDeletion}
           onSuccess={onSuccess}
           onError={onError}
         />

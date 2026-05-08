@@ -44,3 +44,6 @@ class AdminUserCreate(BaseModel):
     email: EmailStr
     password: str
     is_admin: bool = False
+
+class DeleteAccountRequest(BaseModel):
+    password: str

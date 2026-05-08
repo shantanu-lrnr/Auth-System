@@ -56,10 +56,28 @@ export const apiFetch = async (path, options = {}) => {
   let res = await doFetch(path, options)
 
   // On 401, try a silent token refresh then retry once.
+  let sessionExpiredReason = null
   if (res.status === 401 && options.token) {
     const newToken = await tryRefresh()
     if (newToken) {
       res = await doFetch(path, options, newToken)
+    } else {
+      // Refresh failed — session is dead (logged out, deactivated, deleted).
+      // Capture the original 401 detail so the UI can explain why.
+      try {
+        const body = await res.clone().json()
+        sessionExpiredReason = extractErrorMessage(body, 401)
+      } catch {
+        sessionExpiredReason = 'Your session has ended. Please sign in again.'
+      }
+      if (localStorage.getItem(TOKEN_KEY)) {
+        localStorage.removeItem(TOKEN_KEY)
+        window.dispatchEvent(
+          new CustomEvent('aurora.session-expired', {
+            detail: { reason: sessionExpiredReason },
+          }),
+        )
+      }
     }
   }
 
@@ -70,7 +88,7 @@ export const apiFetch = async (path, options = {}) => {
 
   let errorBody
   try { errorBody = await res.json() } catch { errorBody = null }
-  const err = new Error(extractErrorMessage(errorBody, res.status))
+  const err = new Error(sessionExpiredReason || extractErrorMessage(errorBody, res.status))
   err.status = res.status
   throw err
 }
