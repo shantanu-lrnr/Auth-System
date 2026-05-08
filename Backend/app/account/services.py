@@ -1,17 +1,29 @@
 from app.account.models import User
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.account.schemas import UserCreate
+from sqlalchemy import select, func, or_, asc, desc
+from datetime import datetime, timezone
+from app.account.schemas import UserCreate, AdminUserCreate
 from app.account.utils import (
     get_user_by_email,
     hash_password,
     verify_password,
     create_email_verification_token,
     verify_token_and_get_user_id,
-    create_password_reset_token
+    create_password_reset_token,
+    revoke_all_user_tokens,
 )
 from app.account.email import send_email, render_action_email, APP_BASE_URL
 
 from fastapi import BackgroundTasks, HTTPException
+
+
+_SORT_COLUMNS = {
+    "name": User.name,
+    "email": User.email,
+    "created_at": User.created_at,
+    "is_active": User.is_active,
+    "is_admin": User.is_admin,
+}
 
 
 async def create_user(session:AsyncSession, user:UserCreate) -> User:
@@ -33,6 +45,8 @@ async def create_user(session:AsyncSession, user:UserCreate) -> User:
 async def authenticate_user(session:AsyncSession, email:str,password:str):
     user = await get_user_by_email(session,email)
     if user and verify_password(password,user.hashed_password):
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Account deactivated. Contact an administrator.")
         return user
     return None
 
@@ -103,4 +117,184 @@ async def reset_password_with_token(session:AsyncSession,token:str,new_password:
     if not user:
         raise HTTPException(status_code=404,detail="User not found")
     return await change_password(session, user, new_password)
-       
+
+
+# -------------------- Admin services --------------------
+
+def _apply_user_filters(stmt, search: str | None, role: str | None, status: str | None):
+    if search is not None:
+        s = search.strip()
+        if s:
+            pattern = f"%{s}%"
+            stmt = stmt.where(or_(User.name.ilike(pattern), User.email.ilike(pattern)))
+    if role == "admin":
+        stmt = stmt.where(User.is_admin == True)
+    elif role == "user":
+        stmt = stmt.where(User.is_admin == False)
+    if status == "active":
+        stmt = stmt.where(User.is_active == True, User.deleted_at.is_(None))
+    elif status == "inactive":
+        stmt = stmt.where(User.is_active == False, User.deleted_at.is_(None))
+    elif status == "deleted":
+        stmt = stmt.where(User.deleted_at.is_not(None))
+    return stmt
+
+
+async def list_users(
+    session: AsyncSession,
+    page: int = 1,
+    page_size: int = 20,
+    search: str | None = None,
+    sort_by: str = "created_at",
+    order: str = "desc",
+    role: str | None = None,
+    status: str | None = None,
+):
+    if sort_by not in _SORT_COLUMNS:
+        raise HTTPException(status_code=400, detail="Invalid sort field")
+    if order not in {"asc", "desc"}:
+        raise HTTPException(status_code=400, detail="Invalid order")
+    if role is not None and role not in {"admin", "user"}:
+        raise HTTPException(status_code=400, detail="Invalid role filter")
+    if status is not None and status not in {"active", "inactive", "deleted"}:
+        raise HTTPException(status_code=400, detail="Invalid status filter")
+
+    page = max(1, page)
+    page_size = min(max(1, page_size), 100)
+
+    base = _apply_user_filters(select(User), search, role, status)
+    total = await session.scalar(select(func.count()).select_from(base.subquery()))
+    direction = asc if order == "asc" else desc
+    stmt = (
+        base.order_by(direction(_SORT_COLUMNS[sort_by]))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = (await session.scalars(stmt)).all()
+
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+async def user_stats(session: AsyncSession):
+    total = await session.scalar(select(func.count()).select_from(User))
+    active = await session.scalar(
+        select(func.count()).select_from(User).where(
+            User.is_active == True, User.deleted_at.is_(None)
+        )
+    )
+    admins = await session.scalar(
+        select(func.count()).select_from(User).where(User.is_admin == True)
+    )
+    now = datetime.now(timezone.utc)
+    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    new_this_month = await session.scalar(
+        select(func.count()).select_from(User).where(User.created_at >= month_start)
+    )
+    return {
+        "total": total or 0,
+        "active": active or 0,
+        "admins": admins or 0,
+        "new_this_month": new_this_month or 0,
+    }
+
+
+async def get_user_by_id(session: AsyncSession, user_id: int) -> User:
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+async def toggle_user_active(session: AsyncSession, actor: User, target_id: int):
+    target = await get_user_by_id(session, target_id)
+    if actor.id == target.id:
+        raise HTTPException(status_code=400, detail="Cannot modify your own account")
+    if target.is_admin:
+        raise HTTPException(status_code=403, detail="Cannot modify another admin's account")
+
+    target.is_active = not target.is_active
+    session.add(target)
+    await session.commit()
+    await session.refresh(target)
+
+    if not target.is_active:
+        await revoke_all_user_tokens(session, target.id)
+
+    msg = "User activated" if target.is_active else "User deactivated"
+    return {"msg": msg, "user": target}
+
+
+async def toggle_user_admin(session: AsyncSession, actor: User, target_id: int):
+    target = await get_user_by_id(session, target_id)
+    if actor.id == target.id:
+        raise HTTPException(status_code=400, detail="Cannot modify your own account")
+    if target.is_admin:
+        raise HTTPException(status_code=403, detail="Cannot modify another admin's account")
+
+    target.is_admin = not target.is_admin
+    session.add(target)
+    await session.commit()
+    await session.refresh(target)
+
+    msg = "Admin role granted" if target.is_admin else "Admin role revoked"
+    return {"msg": msg, "user": target}
+
+
+async def create_user_as_admin(session: AsyncSession, payload: AdminUserCreate) -> User:
+    existing = await get_user_by_email(session, payload.email)
+    if existing:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    new_user = User(
+        name=payload.name.strip(),
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        is_admin=payload.is_admin,
+        is_active=True,
+        is_verified=False,
+    )
+    session.add(new_user)
+    await session.commit()
+    await session.refresh(new_user)
+    return new_user
+
+
+async def export_users_csv(
+    session: AsyncSession,
+    search: str | None = None,
+    sort_by: str = "created_at",
+    order: str = "desc",
+    role: str | None = None,
+    status: str | None = None,
+) -> str:
+    if sort_by not in _SORT_COLUMNS:
+        raise HTTPException(status_code=400, detail="Invalid sort field")
+    if order not in {"asc", "desc"}:
+        raise HTTPException(status_code=400, detail="Invalid order")
+
+    base = _apply_user_filters(select(User), search, role, status)
+    direction = asc if order == "asc" else desc
+    stmt = base.order_by(direction(_SORT_COLUMNS[sort_by]))
+    items = (await session.scalars(stmt)).all()
+
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow([
+        "id", "name", "email", "is_active", "is_verified",
+        "is_admin", "deleted_at", "created_at", "updated_at",
+    ])
+    for u in items:
+        w.writerow([
+            u.id,
+            u.name,
+            u.email,
+            u.is_active,
+            u.is_verified,
+            u.is_admin,
+            u.deleted_at.isoformat() if u.deleted_at else "",
+            u.created_at.isoformat() if u.created_at else "",
+            u.updated_at.isoformat() if u.updated_at else "",
+        ])
+    return buf.getvalue()

@@ -79,3 +79,73 @@ export const apiFormPost = (path, fields, options = {}) => {
   const params = new URLSearchParams(fields)
   return apiFetch(path, { method: 'POST', body: params, ...options })
 }
+
+// -------------------- Admin --------------------
+
+export const listUsers = ({ page = 1, pageSize = 20, search = '', sortBy = 'created_at', order = 'desc', role, status, token }) => {
+  const params = new URLSearchParams()
+  params.set('page', String(page))
+  params.set('page_size', String(pageSize))
+  params.set('sort_by', sortBy)
+  params.set('order', order)
+  const trimmed = (search || '').trim()
+  if (trimmed) params.set('search', trimmed)
+  if (role) params.set('role', role)
+  if (status) params.set('status', status)
+  return apiFetch(`/account/admin/users/?${params.toString()}`, { token })
+}
+
+export const getUserStats = ({ token }) =>
+  apiFetch('/account/admin/users/stats', { token })
+
+export const createUserAsAdmin = ({ name, email, password, isAdmin = false, token }) =>
+  apiFetch('/account/admin/users/', {
+    method: 'POST',
+    body: { name, email, password, is_admin: isAdmin },
+    token,
+  })
+
+export const downloadUsersCsv = async ({ search = '', role, status, sortBy = 'created_at', order = 'desc', token }) => {
+  const params = new URLSearchParams()
+  const trimmed = (search || '').trim()
+  if (trimmed) params.set('search', trimmed)
+  if (role) params.set('role', role)
+  if (status) params.set('status', status)
+  params.set('sort_by', sortBy)
+  params.set('order', order)
+  const res = await fetch(`${API_URL}/account/admin/users/export?${params.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    let detail = `Export failed (${res.status}).`
+    try {
+      const body = await res.json()
+      if (body?.detail) detail = body.detail
+    } catch { /* not JSON */ }
+    const err = new Error(detail)
+    err.status = res.status
+    throw err
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  const cd = res.headers.get('Content-Disposition') || ''
+  const m = cd.match(/filename="?([^"]+)"?/)
+  a.download = m ? m[1] : `users-${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+export const getUserById = ({ userId, token }) =>
+  apiFetch(`/account/admin/users/${userId}`, { token })
+
+export const toggleUserActive = ({ userId, token }) =>
+  apiFetch(`/account/admin/users/${userId}/toggle-active`, { method: 'PATCH', token })
+
+export const toggleUserAdmin = ({ userId, token }) =>
+  apiFetch(`/account/admin/users/${userId}/toggle-admin`, { method: 'PATCH', token })
+

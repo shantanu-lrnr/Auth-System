@@ -1,7 +1,7 @@
 from app.account.models import User, RefreshToken
 from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from jose import jwt
@@ -64,6 +64,8 @@ async def verify_refresh_token(session: AsyncSession, token: str):
             expires_at = expires_at.replace(tzinfo=timezone.utc)
 
         if expires_at > datetime.now(timezone.utc):
+            if not db_token.user.is_active:
+                return None
             return db_token.user
 
     return None
@@ -123,3 +125,13 @@ async def revoke_refresh_token(session: AsyncSession, token: str):
         db_refresh_token.revoked = True
         session.add(db_refresh_token)
         await session.commit()
+
+
+async def revoke_all_user_tokens(session: AsyncSession, user_id: int) -> None:
+    stmt = (
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id, RefreshToken.revoked == False)
+        .values(revoked=True)
+    )
+    await session.execute(stmt)
+    await session.commit()

@@ -7,10 +7,8 @@ from app.account.models import User
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="account/login")
 
 async def get_current_user(session:SessionDep,token:str=Depends(oauth2_scheme)):
-    print("Token:---------",token)
     payload = decode_token(token)
     if payload:
-        print("Payload:---------",payload)
         sub = int(payload.get("sub"))
         user = await session.get(User,sub)
         if not user:

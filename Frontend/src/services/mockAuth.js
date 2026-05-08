@@ -68,3 +68,13 @@ export const changePassword = async ({ newPassword, token }) =>
     `/account/change-password?new_password=${encodeURIComponent(newPassword)}`,
     { method: 'POST', token },
   )
+
+export {
+  listUsers,
+  getUserById,
+  toggleUserActive,
+  toggleUserAdmin,
+  getUserStats,
+  createUserAsAdmin,
+  downloadUsersCsv,
+} from './api'

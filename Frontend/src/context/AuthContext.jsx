@@ -66,6 +66,14 @@ export const AuthProvider = ({ children }) => {
     return result
   }
 
+  const listUsers = (params = {}) => mockAuth.listUsers({ ...params, token })
+  const getUserById = (userId) => mockAuth.getUserById({ userId, token })
+  const toggleUserActive = (userId) => mockAuth.toggleUserActive({ userId, token })
+  const toggleUserAdmin = (userId) => mockAuth.toggleUserAdmin({ userId, token })
+  const getUserStats = () => mockAuth.getUserStats({ token })
+  const createUserAsAdmin = (payload) => mockAuth.createUserAsAdmin({ ...payload, token })
+  const downloadUsersCsv = (filters = {}) => mockAuth.downloadUsersCsv({ ...filters, token })
+
   const value = useMemo(
     () => ({
       user,
@@ -80,6 +88,13 @@ export const AuthProvider = ({ children }) => {
       changePassword,
       requestVerification,
       verifyEmail,
+      listUsers,
+      getUserById,
+      toggleUserActive,
+      toggleUserAdmin,
+      getUserStats,
+      createUserAsAdmin,
+      downloadUsersCsv,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, token, bootstrapping],

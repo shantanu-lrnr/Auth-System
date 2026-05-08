@@ -17,7 +17,7 @@ const linkClass = ({ isActive }) =>
 
 const Navbar = () => {
   const [open, setOpen] = useState(false)
-  const { isAuthenticated, logout } = useAuth()
+  const { isAuthenticated, user, logout } = useAuth()
   const navigate = useNavigate()
 
   const handleLogout = async () => {
@@ -50,6 +50,11 @@ const Navbar = () => {
           ))}
           {isAuthenticated && (
             <>
+              {user?.is_admin && (
+                <NavLink to="/admin" className={linkClass} end>
+                  Admin
+                </NavLink>
+              )}
               <NavLink to="/profile" className={linkClass} end>
                 Profile
               </NavLink>
@@ -95,6 +100,22 @@ const Navbar = () => {
           ))}
           {isAuthenticated && (
             <>
+              {user?.is_admin && (
+                <NavLink
+                  to="/admin"
+                  end
+                  onClick={() => setOpen(false)}
+                  className={({ isActive }) =>
+                    `block rounded-md px-3 py-2 text-sm transition-colors ${
+                      isActive
+                        ? 'text-white bg-white/5'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`
+                  }
+                >
+                  Admin
+                </NavLink>
+              )}
               <NavLink
                 to="/profile"
                 end
