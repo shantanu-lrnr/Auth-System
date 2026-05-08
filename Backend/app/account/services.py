@@ -63,6 +63,13 @@ async def verify_email_token(session:AsyncSession,token:str):
     await session.commit()
     return {"msg":"Email verified successfully"}
 
+async def update_user_name(session: AsyncSession, user: User, name: str) -> User:
+    user.name = name
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
 async def change_password(session:AsyncSession,user:User,new_password:str):
     if verify_password(new_password,user.hashed_password):
         raise HTTPException(status_code=400,detail="New password cannot be same as old password")

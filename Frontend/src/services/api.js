@@ -1,4 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const TOKEN_KEY = 'aurora.token'
 
 const extractErrorMessage = (body, status) => {
   if (typeof body?.detail === 'string') return body.detail
@@ -6,13 +7,33 @@ const extractErrorMessage = (body, status) => {
   return `Request failed (${status}).`
 }
 
-export const apiFetch = async (path, options = {}) => {
+// Attempt a silent token refresh using the httpOnly refresh cookie.
+// Returns the new access token string, or null if refresh fails.
+const tryRefresh = async () => {
+  try {
+    const res = await fetch(`${API_URL}/account/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const newToken = data.access_token
+    if (!newToken) return null
+    localStorage.setItem(TOKEN_KEY, newToken)
+    return newToken
+  } catch {
+    return null
+  }
+}
+
+const doFetch = async (path, options = {}, tokenOverride) => {
   const { body, method = 'GET', headers = {}, credentials = 'include', token, ...rest } = options
+  const resolvedToken = tokenOverride ?? token
 
   const isPlainObject = body !== null && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof URLSearchParams)
 
   const resolvedHeaders = isPlainObject ? { 'Content-Type': 'application/json', ...headers } : { ...headers }
-  if (token) resolvedHeaders['Authorization'] = `Bearer ${token}`
+  if (resolvedToken) resolvedHeaders['Authorization'] = `Bearer ${resolvedToken}`
 
   const fetchOptions = {
     method,
@@ -27,6 +48,19 @@ export const apiFetch = async (path, options = {}) => {
     res = await fetch(`${API_URL}${path}`, fetchOptions)
   } catch {
     throw new Error('Network error — could not reach server.')
+  }
+  return res
+}
+
+export const apiFetch = async (path, options = {}) => {
+  let res = await doFetch(path, options)
+
+  // On 401, try a silent token refresh then retry once.
+  if (res.status === 401 && options.token) {
+    const newToken = await tryRefresh()
+    if (newToken) {
+      res = await doFetch(path, options, newToken)
+    }
   }
 
   if (res.ok) {
