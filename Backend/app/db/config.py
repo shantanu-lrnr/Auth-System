@@ -13,7 +13,7 @@ db_path = BASE_DIR / "sqlite.db"
 
 DATABASE_URL = f"sqlite+aiosqlite:///{db_path}"
 
-engine = create_async_engine(DATABASE_URL,echo=True, future=True)
+engine = create_async_engine(DATABASE_URL,future=True)
 async_session = async_sessionmaker(bind = engine, expire_on_commit=False, class_= AsyncSession)
 
 async def create_tables():

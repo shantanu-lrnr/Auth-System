@@ -51,7 +51,9 @@ export const getSession = async () => {
   if (!token) return null
   try {
     const user = await apiFetch('/account/me', { token })
-    return { user, token }
+    // Token may have been silently refreshed inside apiFetch; read the current value.
+    const activeToken = localStorage.getItem(TOKEN_KEY)
+    return { user, token: activeToken }
   } catch {
     localStorage.removeItem(TOKEN_KEY)
     return null
@@ -66,3 +68,13 @@ export const changePassword = async ({ newPassword, token }) =>
     `/account/change-password?new_password=${encodeURIComponent(newPassword)}`,
     { method: 'POST', token },
   )
+
+export {
+  listUsers,
+  getUserById,
+  toggleUserActive,
+  toggleUserAdmin,
+  getUserStats,
+  createUserAsAdmin,
+  downloadUsersCsv,
+} from './api'

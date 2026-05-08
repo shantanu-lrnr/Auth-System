@@ -8,6 +8,7 @@ import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import VerifyEmail from './pages/VerifyEmail'
 import Profile from './pages/Profile'
+import AdminPanel from './pages/AdminPanel'
 import { useAuth } from './context/AuthContext'
 
 const GuestRoute = ({ children }) => {
@@ -20,6 +21,14 @@ const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, bootstrapping } = useAuth()
   if (bootstrapping) return null
   return isAuthenticated ? children : <Navigate to="/login" replace />
+}
+
+const AdminRoute = ({ children }) => {
+  const { isAuthenticated, user, bootstrapping } = useAuth()
+  if (bootstrapping) return null
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (!user?.is_admin) return <Navigate to="/profile" replace />
+  return children
 }
 
 const App = () => (
@@ -35,6 +44,7 @@ const App = () => (
         <Route path="/reset-password" element={<GuestRoute><ResetPassword /></GuestRoute>} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
