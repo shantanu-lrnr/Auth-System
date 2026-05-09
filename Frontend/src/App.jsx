@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import AuroraBackground from './components/auth/AuroraBackground'
 import Navbar from './components/auth/Navbar'
@@ -21,9 +21,14 @@ const GuestRoute = ({ children }) => {
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, bootstrapping, revalidating, revalidateSession } = useAuth()
   const location = useLocation()
+  const lastRevalidatedPath = useRef(location.pathname)
   useEffect(() => {
+    // Only revalidate when the user actually navigates to a *different*
+    // protected path. Skips the initial mount (AuthContext / login already
+    // fetched the user) and survives StrictMode's effect double-fire.
+    if (lastRevalidatedPath.current === location.pathname) return
+    lastRevalidatedPath.current = location.pathname
     if (isAuthenticated) revalidateSession()
-    // Re-check whenever the user navigates between protected pages.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])
   if (bootstrapping || revalidating) return null
@@ -33,7 +38,10 @@ const ProtectedRoute = ({ children }) => {
 const AdminRoute = ({ children }) => {
   const { isAuthenticated, user, bootstrapping, revalidating, revalidateSession } = useAuth()
   const location = useLocation()
+  const lastRevalidatedPath = useRef(location.pathname)
   useEffect(() => {
+    if (lastRevalidatedPath.current === location.pathname) return
+    lastRevalidatedPath.current = location.pathname
     if (isAuthenticated) revalidateSession()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])

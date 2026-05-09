@@ -62,7 +62,7 @@ async def login(session:SessionDep,form_data:OAuth2PasswordRequestForm = Depends
         key="refresh_token",
         value=tokens["refresh_token"],
         httponly=True,
-        secure=True,
+        secure=False,
         samesite="lax",
         max_age= 60*60*24*7
     )
@@ -97,7 +97,7 @@ async def refresh_token(session:SessionDep,request:Request):
         key="refresh_token",
         value=tokens["refresh_token"],
         httponly=True,
-        secure=True,
+        secure=False,
         samesite="lax",
         max_age=60*60*24*7
     )

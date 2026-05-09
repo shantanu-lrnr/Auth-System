@@ -1,5 +1,5 @@
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
@@ -23,7 +23,12 @@ const Navbar = () => {
 
   // Revalidate on every navigation so a deactivated/deleted user's nav state
   // (e.g. on the public Landing page) updates without a hard refresh.
+  // Track the last path we revalidated for so we don't re-fire on the same
+  // path (covers StrictMode's effect double-fire and post-login mount).
+  const lastRevalidatedPath = useRef(location.pathname)
   useEffect(() => {
+    if (lastRevalidatedPath.current === location.pathname) return
+    lastRevalidatedPath.current = location.pathname
     if (isAuthenticated) revalidateSession()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])

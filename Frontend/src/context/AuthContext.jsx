@@ -14,6 +14,13 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      // getSession() already coalesces concurrent calls — but StrictMode's
+      // mount/unmount/mount runs them sequentially. The first sets state,
+      // the second is a wasted /me. Skip when we already have a user.
+      if (user) {
+        setBootstrapping(false)
+        return
+      }
       const session = await mockAuth.getSession()
       if (cancelled) return
       if (session) {
@@ -26,6 +33,7 @@ export const AuthProvider = ({ children }) => {
       setBootstrapping(false)
     })()
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // If apiFetch detects a dead session (401 + refresh failed), it removes the
@@ -39,8 +47,16 @@ export const AuthProvider = ({ children }) => {
       const reason = e?.detail?.reason
       if (reason) toast.error(reason)
     }
+    const onRefreshed = (e) => {
+      const newToken = e?.detail?.token
+      if (newToken) setToken(newToken)
+    }
     window.addEventListener('aurora.session-expired', onExpired)
-    return () => window.removeEventListener('aurora.session-expired', onExpired)
+    window.addEventListener('aurora.token-refreshed', onRefreshed)
+    return () => {
+      window.removeEventListener('aurora.session-expired', onExpired)
+      window.removeEventListener('aurora.token-refreshed', onRefreshed)
+    }
   }, [toast])
 
   const login = async (credentials) => {

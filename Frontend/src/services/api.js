@@ -9,21 +9,37 @@ const extractErrorMessage = (body, status) => {
 
 // Attempt a silent token refresh using the httpOnly refresh cookie.
 // Returns the new access token string, or null if refresh fails.
-const tryRefresh = async () => {
-  try {
-    const res = await fetch(`${API_URL}/account/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    })
-    if (!res.ok) return null
-    const data = await res.json()
-    const newToken = data.access_token
-    if (!newToken) return null
-    localStorage.setItem(TOKEN_KEY, newToken)
-    return newToken
-  } catch {
-    return null
-  }
+// Concurrent callers share a single in-flight request so we don't race
+// the backend's refresh-token rotation (which would revoke the cookie
+// out from under the parallel callers).
+let refreshInflight = null
+const tryRefresh = () => {
+  if (refreshInflight) return refreshInflight
+  refreshInflight = (async () => {
+    try {
+      const res = await fetch(`${API_URL}/account/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      const newToken = data.access_token
+      if (!newToken) return null
+      localStorage.setItem(TOKEN_KEY, newToken)
+      // Notify AuthContext so its in-memory token (used by useAuth().token)
+      // stays in sync — otherwise callers keep sending the old token and
+      // every request triggers another refresh.
+      window.dispatchEvent(
+        new CustomEvent('aurora.token-refreshed', { detail: { token: newToken } }),
+      )
+      return newToken
+    } catch {
+      return null
+    } finally {
+      refreshInflight = null
+    }
+  })()
+  return refreshInflight
 }
 
 const doFetch = async (path, options = {}, tokenOverride) => {
@@ -52,7 +68,17 @@ const doFetch = async (path, options = {}, tokenOverride) => {
   return res
 }
 
-export const apiFetch = async (path, options = {}) => {
+// Coalesce concurrent identical GETs so React StrictMode (and parallel
+// callers) don't fire the same request twice. Keyed by method+path+token.
+// Only safe for idempotent reads — never coalesce mutations.
+const inflightGets = new Map()
+// Short-lived response cache: lets a GET fired moments after another
+// identical GET (e.g. StrictMode unmount/remount where the original
+// already resolved) reuse the result instead of refetching.
+const recentGets = new Map() // key -> { value, at }
+const RECENT_GET_TTL_MS = 1500
+
+const apiFetchCore = async (path, options = {}) => {
   let res = await doFetch(path, options)
 
   // On 401, try a silent token refresh then retry once.
@@ -91,6 +117,31 @@ export const apiFetch = async (path, options = {}) => {
   const err = new Error(sessionExpiredReason || extractErrorMessage(errorBody, res.status))
   err.status = res.status
   throw err
+}
+
+export const apiFetch = (path, options = {}) => {
+  const method = (options.method || 'GET').toUpperCase()
+  if (method !== 'GET') return apiFetchCore(path, options)
+  // Key intentionally excludes the token — a refresh mid-flight can swap
+  // the token, which would otherwise split one logical request into two
+  // and defeat dedup. Auth is enforced server-side regardless.
+  const key = `${method} ${path}`
+  const existing = inflightGets.get(key)
+  if (existing) return existing
+  const cached = recentGets.get(key)
+  if (cached && Date.now() - cached.at < RECENT_GET_TTL_MS) {
+    return Promise.resolve(cached.value)
+  }
+  const promise = apiFetchCore(path, options)
+    .then((value) => {
+      recentGets.set(key, { value, at: Date.now() })
+      return value
+    })
+    .finally(() => {
+      inflightGets.delete(key)
+    })
+  inflightGets.set(key, promise)
+  return promise
 }
 
 export const apiFormPost = (path, fields, options = {}) => {
